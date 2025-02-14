@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reaction Timer</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            flex-direction: column;
+            text-align: center;
+        }
+
+        h1 {
+            margin-bottom: 20px;
+        }
+
+        #start-button {
+            width: 200px;
+            height: 100px;
+            font-size: 20px;
+            background-color: gray;
+            color: white;
+            border: none;
+            cursor: pointer;
+            margin: 10px;
+        }
+
+        #reaction-button {
+            width: 300px;
+            height: 200px;
+            background-color: red;
+            border: none;
+            margin: 10px;
+        }
+
+        button {
+            margin: 10px;
+            font-size: 18px;
+            padding: 10px 20px;
+        }
+
+        p {
+            font-size: 18px;
+        }
+    </style>
+
+    <script>
+        let reacting = false; // True when waiting for user input
+        let testInProgress = false; // True when test is running
+        let timeoutID = null; // Store timeout ID to clear if needed
+
+        function startTest() {
+            let startButton = document.getElementById("start-button");
+            let reactionButton = document.getElementById("reaction-button");
+
+            if (!testInProgress) {
+                // Start the test
+                startButton.innerText = "Stop Test";
+                reactionButton.style.backgroundColor = "red";
+                document.getElementById("message").innerText = "Wait for green...";
+                reacting = false;
+                testInProgress = true;
+
+                fetch("/start")
+                    .then(response => response.json())
+                    .then(data => {
+                        let delay = data.delay * 1000; // Convert seconds to milliseconds
+                        if (delay < 0) delay = 0;
+
+                        timeoutID = setTimeout(() => {
+                            reactionButton.style.backgroundColor = "green";
+                            window.startTime = performance.now();
+                            reacting = true; // Now user is allowed to click
+                        }, delay);
+                    });
+
+            } else {
+                // Stop the test before green → cheating detected
+                if (!reacting) {
+                    document.getElementById("message").innerText = "Too early! Cheating detected.";
+                    resetTest();
+                    return;
+                }
+
+                // Test stopped correctly, record reaction time
+                let reactionTime = (performance.now() - window.startTime) / 1000;
+                fetch("/record", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                    body: "reaction_time=" + reactionTime
+                }).then(response => {
+                    if (response.ok) {
+                        document.getElementById("message").innerText = "Reaction recorded! Time: " + reactionTime.toFixed(3) + "s";
+                    } else {
+                        response.text().then(text => alert(text));
+                    }
+                });
+
+                resetTest();
+            }
+        }
+
+        function resetTest() {
+            let startButton = document.getElementById("start-button");
+            let reactionButton = document.getElementById("reaction-button");
+
+            clearTimeout(timeoutID); // Cancel any pending green light change
+            reacting = false;
+            testInProgress = false;
+            startButton.innerText = "Start Test";
+            reactionButton.style.backgroundColor = "red";
+        }
+
+        function getFastest() {
+            fetch("/fastest")
+                .then(response => response.text())
+                .then(data => {
+                    document.getElementById("message").innerText = data;
+                });
+        }
+    </script>
+</head>
+<body>
+    <h1>Reaction Timer</h1>
+    <button id="start-button" onclick="startTest()">Start Test</button>
+    <button id="reaction-button"></button>
+    <p><button onclick="getFastest()">Show Fastest Time</button></p>
+    <p id="message"></p>
+</body>
+</html>
